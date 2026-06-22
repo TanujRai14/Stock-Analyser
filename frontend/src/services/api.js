@@ -1,7 +1,8 @@
 import axios from "axios";
 
 // 🌟 FORCE the cloud app to point straight down to your local machine's port
-const API_BASE = "http://localhost:8000/api";
+// ✅ New live link:
+const API_BASE = "https://stock-analyser-backend-iahq.onrender.com/api";
 
 const client = axios.create({
   baseURL: API_BASE,

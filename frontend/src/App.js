@@ -60,8 +60,15 @@ export default function App() {
       setRows(stockArray);
       setLastUpdated(new Date());
     } catch (err) {
-      setError(err.response ? `Backend responded with ${err.response.status}.` : "Could not reach the backend at localhost:8000. Is the API running?");
-    } finally {
+      // ❌ Old hardcoded block:
+// setError(err.response ? `Backend responded with ${err.response.status}.` : "Could not reach the backend at localhost:8000.");
+
+// ✅ New dynamic error handler block:
+setError(
+  err.response 
+    ? `Backend error: ${err.response.status} - ${err.response.data?.message || 'Server Issue'}` 
+    : "Network Timeout: The free-tier cloud server is still waking up. Please wait 10 seconds and try again!"
+);  
       setLoading(false);
     }
   }, []);
