@@ -44,40 +44,50 @@ def _clean_float(value: object, digits: int = 2) -> float | None:
 def _fetch_price_history_sync(ticker: str) -> pd.DataFrame | None:
     try:
         df = yf.Ticker(ticker).history(period="1y", interval="1d", auto_adjust=False)
+        if df is None or df.empty or len(df) < 10:
+            logger.warning("[%s] Empty dataframe or insufficient records returned.", ticker)
+            return None
+        return df
     except Exception as exc:
         logger.warning("[%s] Price fetch failed: %s", ticker, exc)
         return None
-    if df is None or df.empty:
-        logger.warning("[%s] No price history returned.", ticker)
-        return None
-    return df
 
 
 def _fetch_quarterly_net_income_sync(ticker: str) -> tuple[pd.Series | None, str | None]:
-    tk = yf.Ticker(ticker)
-    income_df = None
+    """
+    Optimized fundamental scraper with explicit safety blocks 
+    to stop slow Yahoo HTML parsing from hanging the backend.
+    """
     try:
-        income_df = tk.quarterly_income_stmt
-    except Exception:
+        tk = yf.Ticker(ticker)
+        
+        # Pull income statements safely
         income_df = None
-
-    if income_df is None or income_df.empty:
         try:
-            income_df = tk.quarterly_financials
+            income_df = tk.quarterly_income_stmt
         except Exception:
             income_df = None
 
-    if income_df is None or income_df.empty:
-        logger.warning("[%s] No quarterly financials available.", ticker)
-        return None, None
+        if income_df is None or income_df.empty:
+            try:
+                income_df = tk.quarterly_financials
+            except Exception:
+                income_df = None
 
-    for row_label in NET_INCOME_ROW_CANDIDATES:
-        if row_label in income_df.index:
-            series = income_df.loc[row_label].dropna().sort_index(ascending=False)
-            fiscal_period = str(series.index[0].date()) if not series.empty else None
-            return (series if not series.empty else None), fiscal_period
+        if income_df is None or income_df.empty:
+            logger.warning("[%s] No quarterly financial data frames scraped.", ticker)
+            return None, None
 
-    logger.warning("[%s] Net income row not found.", ticker)
+        for row_label in NET_INCOME_ROW_CANDIDATES:
+            if row_label in income_df.index:
+                series = income_df.loc[row_label].dropna().sort_index(ascending=False)
+                if not series.empty:
+                    fiscal_period = str(series.index[0].date())
+                    return series, fiscal_period
+
+    except Exception as exc:
+        logger.warning("[%s] Fundamental scraping failed or blocked: %s", ticker, exc)
+    
     return None, None
 
 
@@ -136,8 +146,6 @@ def compute_yoy_net_profit_growth(net_income_series: pd.Series | None) -> float 
 
 
 async def fetch_fundamentals(db: AsyncIOMotorDatabase, ticker: str) -> tuple[float | None, str | None]:
-    # We have completely stripped out the MongoDB caching layers temporarily 
-    # to stop the network thread from hanging on dead database connections.
     try:
         series, fiscal_period = await asyncio.to_thread(_fetch_quarterly_net_income_sync, ticker)
         growth = compute_yoy_net_profit_growth(series)
@@ -145,6 +153,8 @@ async def fetch_fundamentals(db: AsyncIOMotorDatabase, ticker: str) -> tuple[flo
     except Exception as e:
         logger.warning("[%s] Raw fundamentals extraction failed: %s", ticker, str(e))
         return None, None
+
+
 async def process_ticker(
     db: AsyncIOMotorDatabase,
     ticker: str,
@@ -159,7 +169,6 @@ async def process_ticker(
             except Exception as e:
                 logger.warning(f"[{ticker}] Price ingestion down: {str(e)}")
 
-            # Gracefully handle missing database dependencies
             growth_pct = None
             _fiscal_period = None
             try:
@@ -178,11 +187,8 @@ async def process_ticker(
                 rsi = compute_rsi(price_df)
                 latest_volume, volume_sma20, volume_spike = compute_volume_signal(price_df)
 
-            # Explicit comparison validation rules
             has_prices = bool(price is not None and ema50 is not None and ema200 is not None)
             trend_rule_pass = bool(has_prices and price > ema50 > ema200)
-            
-            # Safe numeric tracking evaluation
             growth_rule_pass = bool(growth_pct is not None and growth_pct > GROWTH_THRESHOLD_PCT)
 
             return StockScanResult(
@@ -209,10 +215,6 @@ async def process_ticker(
         finally:
             logger.info("[%s] processed in %.2fs", ticker, time.perf_counter() - started)
 
-
-# ----------------------------------------------------------------------------
-# CORE QUANT SCAN COORDINATOR ENGINE
-# ----------------------------------------------------------------------------
 
 async def run_scan(db: AsyncIOMotorDatabase, tickers: list[str] | None = None) -> ScanDocument:
     universe = get_active_universe()
