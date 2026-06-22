@@ -1,7 +1,7 @@
 import logging
 import math
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 # Import the actual working tools and constants from your market data service
 from services.market_data_service import fetch_ticker_data, EMA_SHORT_WINDOW, EMA_LONG_WINDOW
@@ -10,20 +10,18 @@ logger = logging.getLogger(__name__)
 history_router = APIRouter()
 
 @history_router.get("/screener/history")
-async def get_price_history(ticker: str):
+async def get_price_history(ticker: str = Query(..., description="The stock ticker symbol")):
     """
     Returns a list of {date, price, ema50, ema200} for the trailing 1 year,
     suitable for direct use in the frontend's Recharts line chart.
     """
-    logger.info(f"Fetching historical charting array for query: {ticker}")
+    logger.info(f"Fetching historical charting array for: {ticker}")
     
     if not ticker:
-        raise HTTPException(status_code=400, detail="Ticker parameter is required")
-
+        raise HTTPException(status_code=400, detail="Ticker parameter is required.")
+    
     # 1. Await the async data fetch function from your service file
     price_df = await fetch_ticker_data(ticker)
-    
-    # ... leave the rest of your math loop logic exactly the same ...
 
     if price_df is None or price_df.empty:
         raise HTTPException(
@@ -42,10 +40,8 @@ async def get_price_history(ticker: str):
         # 4. Map rows into standard JSON dictionary objects for the frontend
         chart_data = []
         for timestamp, row in df.iterrows():
-            # Format date object seamlessly
             date_str = timestamp.strftime("%Y-%m-%d") if hasattr(timestamp, "strftime") else str(timestamp)
             
-            # Filter out any NaN data elements so Recharts doesn't break
             ema50_val = row["EMA50"]
             ema200_val = row["EMA200"]
             
@@ -56,7 +52,13 @@ async def get_price_history(ticker: str):
                 "ema200": round(float(ema200_val), 2) if not pd.isna(ema200_val) else None,
             })
             
-        return {"status": "success", "ticker": ticker, "data": chart_data}
+        # 🚨 THE MASTER COUPLING FIX: Return both keys to satisfy any frontend variation
+        return {
+            "status": "success", 
+            "ticker": ticker, 
+            "data": chart_data,
+            "history": chart_data
+        }
 
     except Exception as exc:
         logger.exception(f"Error parsing historical tracking grid for {ticker}")
