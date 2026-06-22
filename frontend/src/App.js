@@ -12,7 +12,7 @@ import FilterToolbar from "./components/FilterToolbar";
 import StockTable from "./components/StockTable";
 import StockChartModal from "./components/StockChartModal";
 
-const API_URL = "http://localhost:8000/api/screener";
+const API_URL = process.env.REACT_APP_API_BASE_URL ? `${process.env.REACT_APP_API_BASE_URL}/screener` : "http://localhost:8000/api/screener";
 
 /** @param {{ label: string, value: number|string, accent: string, hint?: string }} props */
 function KpiCard({ label, value, accent, hint }) {
