@@ -9,16 +9,21 @@ from services.market_data_service import fetch_ticker_data, EMA_SHORT_WINDOW, EM
 logger = logging.getLogger(__name__)
 history_router = APIRouter()
 
-@history_router.get("/screener/history/{ticker}")
+@history_router.get("/screener/history")
 async def get_price_history(ticker: str):
     """
     Returns a list of {date, price, ema50, ema200} for the trailing 1 year,
     suitable for direct use in the frontend's Recharts line chart.
     """
-    logger.info(f"Fetching historical charting array for: {ticker}")
+    logger.info(f"Fetching historical charting array for query: {ticker}")
     
+    if not ticker:
+        raise HTTPException(status_code=400, detail="Ticker parameter is required")
+
     # 1. Await the async data fetch function from your service file
     price_df = await fetch_ticker_data(ticker)
+    
+    # ... leave the rest of your math loop logic exactly the same ...
 
     if price_df is None or price_df.empty:
         raise HTTPException(
