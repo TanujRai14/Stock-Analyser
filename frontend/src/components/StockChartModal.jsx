@@ -7,7 +7,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend, Ca
 // year of daily closes + EMAs per ticker. See backend/history_endpoint.py
 // for a ready-to-wire FastAPI route that reuses your existing screener.py
 // fetch/EMA logic (no DB, no paid API — just another yfinance call).
-const HISTORY_API_BASE = "http://localhost:8000/api/screener/history";
+const HISTORY_API_BASE = "https://stock-analyser-backend-iahq.onrender.com/api/screener/history";
 
 /**
  * Expected response shape from the history endpoint:
